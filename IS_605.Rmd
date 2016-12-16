@@ -1,0 +1,735 @@
+---
+title: "Untitled"
+author: "Joy Payton"
+date: "12/14/2016"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache=TRUE)
+```
+# First Tasks: Variable Selection
+
+_Pick one of the quanititative independent variables from the training data set (train.csv), and define that variable as X. Make sure this variable is skewed to the right!  Pick the dependent variable and define it as Y._
+
+To do this, let's review the metadata and download the data itself to understand which variables are independent and which dependent, and make a variable selection.
+
+## Get the metadata
+
+The [Kaggle page itself](https://www.kaggle.com/c/house-prices-advanced-regression-techniques) summarizes the contest like this: "With 79 explanatory variables describing (almost) every aspect of residential homes in Ames, Iowa, this competition challenges you to predict the final price of each home."  So we know that our dependent variable, or Y, is final home price.  And we have a big possible selection of independent variable!
+
+Kaggle supplies us with a mini data dictionary in that same page, which tells us that the home price variable (our Y) has the column name SalePrice.
+
+We'll need to actually get the data and check out the skewness of some of the independent variables in order to select one.  Let's do that!  Because you have to be logged in to get the data, I'm pulling it from my local copy.
+
+## Obtain and Investigate the Data
+
+```{r}
+train <- read.csv("Downloads/train.csv")
+```
+
+Let's figure out what the skewness is for the independent variables!  First, we'll want ones that have a numeric basis, not a categorical one.
+
+Say, the total number of rooms above ground.
+
+```{r}
+library(moments)
+skewness(train$TotRmsAbvGrd)
+```
+
+The skewness is positive (skewed to the right).  Let's look at a histogram!
+
+```{r}
+hist(train$TotRmsAbvGrd)
+```
+
+Yep, skewed to the right.  Let's check out a few more, though!
+
+```{r}
+skewness(train$TotalBsmtSF)
+skewness(train$FullBath)
+skewness(train$GarageCars)
+```
+
+Of those three, only the TotalBsmtSF is skewed to the right.  It's fairly strong:
+
+```{r}
+hist(train$TotalBsmtSF)
+```
+
+Still, I kind of like the first one I tried.  Total Rooms Above Ground has a fairly consistent tail, while Total Basement Square Footage is skewed because of some outliers.  I think I'll get better predictive value out of Total Rooms Above Ground.
+
+## Set the variables
+
+```{r}
+X <- train$TotRmsAbvGrd
+Y <- train$SalePrice
+roomsToSalePrice <- data.frame(X=X,Y=Y)
+```
+
+# Probability Time!
+
+_Calculate as a minimum the below probabilities a through c.  Assume the small letter "x" is estimated as the 3d quartile of the X variable, and the small letter "y" is estimated as the 2d quartile of the Y variable.  Interpret the meaning of all probabilities.  In addition, make a table of counts as shown below._
+
+_a.  P(X>x | Y>y)_
+
+_b.  P(X>x, Y>y)_
+
+_c.  P(X<x | Y>y)_
+
+x/y |  <= 2d Quartile | > 2d Quartile | Total
+----|-----------------|---------------|------
+<= 3d Quartile |||
+>3d Quartile |||
+Total |||
+
+## Get Quartiles
+
+Let's figure out what x and y are:
+
+```{r}
+summary(roomsToSalePrice$X)
+summary(roomsToSalePrice$Y)
+x <- summary(roomsToSalePrice$X)[["3rd Qu."]]
+y <- summary(roomsToSalePrice$Y)[["Median"]]
+```
+
+## Figure out Probabilities, Fill in Table
+
+### (a) P(X>x | Y>y)
+
+Let's figure out (a)  P(X>x | Y>y).
+We'll want to figure out how many Y > y, and out of those, how many have X > x and how many have X <= x.
+
+```{r}
+library(dplyr)
+dim(roomsToSalePrice %>% filter(Y>y, X>x))[1]
+dim(roomsToSalePrice %>% filter(Y>y, X<=x))[1]
+dim(roomsToSalePrice %>% filter(Y>y))[1]
+```
+
+So, we have the following data for the table:
+
+x/y |  <= 2d Quartile | > 2d Quartile | Total
+----|-----------------|---------------|------
+<= 3d Quartile ||470|
+>3d Quartile ||258|
+Total ||728|
+
+And we can figure out P(X>x | Y>y) (probability that X > 3rd quartile given that Y > 2nd quartile) by taking 258 (X>3rd quartile and Y>2nd quartile) divided by 728 (all Y > 2nd quartile):
+
+```{r}
+258/728
+```
+
+P(X>x | Y>y) = 0.3544.  There is a 35.44% chance that X > 3rd quartile, given that Y > 2nd quartile.
+
+### (b) P(X>x, Y>y)
+
+Let's figure out (b)  P(X>x, Y>y).
+We'll want to figure out how many cases we have, and out of those, how many have both X > x and Y > y.
+
+```{r}
+dim(roomsToSalePrice)[1]
+dim(roomsToSalePrice %>% filter(Y>y, X>x))[1]
+```
+
+So, we have the following data for the table:
+
+x/y |  <= 2d Quartile | > 2d Quartile | Total
+----|-----------------|---------------|------
+<= 3d Quartile ||470|
+>3d Quartile ||258|
+Total ||728|1460
+
+And we can figure out P(X>x,Y>y) (probability that X > 3rd quartile and Y > 2nd quartile) by taking 258 (X>3rd quartile and Y>2nd quartile) divided by 1460 (all cases):
+
+```{r}
+258/1460
+```
+
+P(X>x, Y>y) = 0.1767.  There is a 17.67% chance that X > 3rd quartile and Y > 2nd quartile.
+
+
+### (c) P(X\<x | Y>y)	
+
+Let's figure out (c) P(X\<x | Y>y)	
+We'll want to figure out how many Y > y, and out of those, how many have X < x and how many have X >= x.  This will answer (c).  However, to fill in the table, we'll want to swap the case where X=x!  We've already done this in step (a), so we're good with the table.  We'll just figure out the probability.
+
+```{r}
+library(dplyr)
+dim(roomsToSalePrice %>% filter(Y>y, X<x))[1]
+dim(roomsToSalePrice %>% filter(Y>y, X>=x))[1]
+dim(roomsToSalePrice %>% filter(Y>y))[1]
+```
+
+And we can figure out P(X\<x | Y>y) (probability that X < 3rd quartile given that Y > 2nd quartile) by taking 243 (X>3rd quartile and Y>2nd quartile) divided by 728 (all Y > 2nd quartile):
+
+```{r}
+243/728
+```
+
+P(X\<x | Y>y) = 0.3338.  There is a 33.38% chance that X < 3rd quartile, given that Y > 2nd quartile.
+
+### Finish the table
+
+Currently, we have the following data for the table:
+
+x/y |  <= 2d Quartile | > 2d Quartile | Total
+----|-----------------|---------------|------
+<= 3d Quartile ||470|
+>3d Quartile ||258|
+Total ||728|1460
+
+We need to figure out: 
+
+* The number where y<= 2d quartile, in all cases of X
+* The totals for X <= 3rd quartile and >3rd quartile
+
+```{r}
+dim(roomsToSalePrice %>% filter(Y<=y, X>x))[1]
+dim(roomsToSalePrice %>% filter(Y<=y, X<=x))[1]
+dim(roomsToSalePrice %>% filter(Y<=y))[1]
+dim(roomsToSalePrice %>% filter(X<=x))[1]
+dim(roomsToSalePrice %>% filter(X>x))[1]
+```
+
+This gives us the following table:
+
+x/y |  <= 2d Quartile | > 2d Quartile | Total
+----|-----------------|---------------|------
+<= 3d Quartile |651|470|1121
+>3d Quartile |81|258|339
+Total |732|728|1460
+
+Do all our calculations line up?
+
+```{r}
+651+470 == 1121
+81+258 == 339
+732+728 == 1460
+651+81 == 732
+470+258 == 728
+1121+339 == 1460
+```
+
+OK, so the math works out.  Our marginal counts are the sum of our conditional counts. 
+
+# Independence 
+
+_Does splitting the training data in this fashion make them independent? Let A be the new variable counting those observations above the 3d quartile for X, and let B be the new variable counting those observations above the 2d quartile for Y.    Does P(A|B)=P(A)P(B)?   Check mathematically, and then evaluate by running a Chi Square test for association._ 
+
+## Set variables as functions
+
+```{r}
+A <- function(df) {
+  return(df %>% filter(X>x))
+}
+
+B <- function(df) {
+  return(df %>% filter(Y>y))
+}
+```
+
+Now we can easily count and get probability for P(A):
+
+```{r}
+dim(A(roomsToSalePrice))[1]
+dim(A(roomsToSalePrice))[1]/dim(roomsToSalePrice)[1]
+```
+
+For P(B):
+```{r}
+dim(B(roomsToSalePrice))[1]
+dim(B(roomsToSalePrice))[1]/dim(roomsToSalePrice)[1]
+```
+
+For P(A)P(B):
+```{r}
+dim(A(roomsToSalePrice))[1]/dim(roomsToSalePrice)[1] *
+  dim(B(roomsToSalePrice))[1]/dim(roomsToSalePrice)[1]
+```
+
+For P(A|B):
+```{r}
+dim(A(B(roomsToSalePrice)))[1]/dim(roomsToSalePrice)[1]
+```
+
+P(A)P(B) is *not* the same as P(A|B).  These variables are not independent!  Let's confirm via a Chi-Squared test, which will give the probability of independence.
+
+```{r}
+chisq.test(roomsToSalePrice$X, roomsToSalePrice$Y)
+```
+
+Wow, that's a low p-value.  We can reject the null hypothesis of independence.  These varibles are not independent!
+
+# Descriptive and Inferential Statistics. 
+
+_Provide univariate descriptive statistics and appropriate plots for the training data set.  Provide a scatterplot of X and Y.  Provide a 95% CI for the difference in the mean of the variables.  Derive a correlation matrix for two of the quantitative variables you selected.  Test the hypothesis that the correlation between these variables is 0 and provide a 99% confidence interval.  Discuss the meaning of your analysis._
+
+## Univariate Descriptive Statistics
+
+Let's get some idea of what X and Y look like numerically:
+```{r}
+summary(roomsToSalePrice$X)
+summary(roomsToSalePrice$Y)
+sd(roomsToSalePrice$X)
+sd(roomsToSalePrice$Y)
+```
+
+And let's see their distributions:
+```{r}
+hist(roomsToSalePrice$X)
+hist(roomsToSalePrice$Y)
+```
+
+Both are right-skewed.  X has a mean of 6.518 and standard deviation of 1.625.  Y has a mean of 180900 and a standard deviation of 79442.5.
+
+Let's see their relationship!
+```{r}
+plot(roomsToSalePrice$X, roomsToSalePrice$Y)
+```
+
+Even this ugly exploratory plot seems to show a positive correlation!  Let's see if there's significance, if I look at the difference in Y mean between the cases where X > 3d quartile and where X <= 3rd quartile.
+
+```{r}
+t.test(roomsToSalePrice$Y ~ as.factor(roomsToSalePrice$X > x))
+```
+
+Well, the sample estimates are quite different!  Where X>x, the mean of Y is considerably higher.  Is it statistically significant?  Yes, the p value is very low.  And the 95% confidence interval for the difference in mean from X > x and X <= x is (-90434, -67030).  That means that when comparing homes where the number of rooms above ground is less than or equal to the 3rd quartile to homes where the number of rooms above ground is higher than the 3rd quartile, I can expect a large difference in home sale price:  homes with fewer rooms (<= 3rd quartile) will sell for $67k - $90k less than homes with more rooms (above the 3rd quartile).
+
+Let's see a correlation matrix:
+
+```{r}
+cor(roomsToSalePrice)
+```
+
+Obviously our diagonal has 1.0 as the value, as each variable is perfectly correlated with itself.  What interests us is the 0.5337 value, which shows a relatively strong correlation between X and Y.  Is that value statistically significant, however?  Let's do a correlation test to get the p value:
+
+```{r}
+cor.test(roomsToSalePrice$X, roomsToSalePrice$Y, conf.level = 0.99)
+```
+
+That's a tiny p-value, as low as R can go on my computer.  So we can be confident that there really is a positive correlation.  My 99% confidence interval is (0.4837, 0.5802).
+
+Overall, this analysis of the relationship between my X and Y, graphically, in terms of correlation and correlation significance, and in terms of mean difference in Y given different X categories, gives me confidence that there is a relationship between these variables.  Changes in X result in changes in Y.  Specifically, as X increases, so does Y, and these differences are extremely unlikely to be related to random chance (extremely low p-values).
+
+But a correlation of just two variables doesn't tell us much!  Let's grab some additional numerical variables and throw them into the mix!
+
+```{r}
+multiToSalePrice <- train %>% select(TotRmsAbvGrd, LotArea, OverallQual, WoodDeckSF,SalePrice)
+cor(multiToSalePrice)
+```
+
+Let's consider something with low correlation:  Lot Area and Overall Quality.  Its correlation is 0.1058.  Is it significant?
+
+```{r}
+cor.test(multiToSalePrice$LotArea, multiToSalePrice$OverallQual)
+```
+
+It is significant, but the 95% confidence interval takes us close to 0.  There is a real, but slight, correlation.
+
+What about a stronger correlation, that, say, of Total Rooms Above Ground and Overall Quality?
+
+```{r}
+cor.test(multiToSalePrice$TotRmsAbvGrd, multiToSalePrice$OverallQual)
+```
+
+Also significant, but with a 95% confidence interval much further from 0.  This is a moderate to strong correlation: the more rooms above ground you have, the more likely you are to have a higher overall quality home.
+
+
+# Linear Algebra and Correlation
+
+_Invert your correlation matrix. (This is known as the precision matrix and contains variance inflation factors on the diagonal.) Multiply the correlation matrix by the precision matrix, and then multiply the precision matrix by the correlation matrix. Conduct principle components analysis (research this!) and interpret.  Discuss._
+
+
+```{r}
+corMatrix <- cor(multiToSalePrice)
+precMatrix <- solve(corMatrix)
+# we round to correct for precision errors
+round(corMatrix %*% precMatrix,2)
+round(precMatrix %*% corMatrix,2)
+```
+
+Multiplication in either direction gives the identity matrix (makes sense, because it's the inverse!)
+
+PCA attempts to reduce the dimensionality of complex data by discarding data with low variance, and combining highly correlated features into a single "principal component".  The cluster of correlated features with maximum variance is the first principal component and accounts for the most variation in the outcome, the second principal component accounts for the second-highest variation explanation, etc.
+
+Since the scale of our variables is wide (some values are single digit, others are in units of hundreds or thousands), we should scale (and  center) our variables.
+
+Let's get all of the training set's numerical data and center and scale those numbers by getting their Z statistic!
+
+```{r}
+numeric <-  sapply(train, is.numeric)
+numericalTrain <- train[,numeric]
+```
+
+Let's remove ID, shall we?  As well as the outcome variable!
+
+```{r}
+numericalTrain <- numericalTrain %>% select (-c(Id, SalePrice))
+```
+
+Let's check for missing data:
+
+````{r}
+summary(numericalTrain)
+```
+
+These variables have NA's:
+
+* LotFrontage (259)
+* MasVnrArea (8)
+* GarageYrBlt (81)
+
+It's only three variables out of 36.  Let's just remove them -- it's easier!
+
+```{r}
+numericalTrain <- numericalTrain %>% select(-c(LotFrontage,
+                                               MasVnrArea,
+                                               GarageYrBlt))
+```
+
+And let's apply PCA with centering and scaling.
+
+```{r}
+principalComponents <- prcomp(numericalTrain, 
+                              center = TRUE,
+                              scale = TRUE)
+```
+
+We have a much larger number of principal components than we'll need.  Let's plot their relative influence and see how many we want to stick with for our model.  We'll calculate the variance for each principal component, and then figure out how much of the total variance explained each principal component supplies.
+
+```{r}
+pcaVariance <- principalComponents$sdev^2
+head(pcaVariance)
+propVariance <- pcaVariance / sum(pcaVariance)
+head(propVariance)
+```
+
+So our first principal component accounts for 19.4% of variance, the second accounts for 9.6%, the third 6.5%, etc.  Do we experience a telling dropoff of when additional principal components don't add much?
+
+```{r}
+plot(propVariance, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+```
+
+Looks like we can get a lot of variance explained by just the first 5 principal components.  After that, we have diminishing returns -- the improvement for each additional principal component isn't that great.  So let's look at our first five principal components:
+
+```{r}
+head(principalComponents$x[,1:5])
+```
+
+These five "variables", which consist of weighted combinations of all 33 variables, allow us to do prediction on a much smaller data set.  Instead of accounting for 33 variables, we now only have to work with five!
+
+# Calculus-Based Probability & Statistics
+
+_Many times, it makes sense to fit a closed form distribution to data.  For your variable that is skewed to the right, shift it so that the minimum value is above zero.  Then load the MASS package and run fitdistr to fit an exponential probability density function.  (See  https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/fitdistr.html).  Find the optimal value of lambda for this distribution, and then take 1000 samples from this exponential distribution using this value (e.g., rexp(1000, lambda)).  Plot a histogram and compare it with a histogram of your original variable.   Using the exponential pdf, find the 5th and 95th percentiles using the cumulative distribution function (CDF).   Also generate a 95% confidence interval from the empirical data, assuming normality.  Finally, provide the empirical 5th percentile and 95th percentile of the data.  Discuss._
+
+So, that skewed-right variable should only be positive.  Let's check! 
+
+```{r}
+summary(train$TotRmsAbvGrd)
+```
+
+OK, let's continue and create our exponential distribution.
+
+```{r}
+library(MASS)
+dist <- fitdistr(train$TotRmsAbvGrd, "exponential")
+dist$estimate
+simulation <- rexp(1000, rate=0.1534258)
+```
+
+Let's compare histograms!
+
+```{r}
+hist(simulation)
+hist(train$TotRmsAbvGrd)
+```
+
+Hmmm.  These are pretty different -- the actual data is more gaussian, and the simulation misses this!  
+
+Let's get cumulative percentiles for my simulation data:
+
+```{r}
+quantile(ecdf(simulation),probs=c(0.05,0.95))
+```
+
+What's the 95% confidence interval for the __mean__ of my variable?  I know that the standard error will be the sample standard deviation divided by the square root of the sample size:
+
+```{r}
+se <- sd(train$TotRmsAbvGrd)/sqrt(length(train$TotRmsAbvGrd))
+```
+
+A 95% confidence interval is within 2 standard errors, so:
+
+```{r}
+myConfInt <- mean(train$TotRmsAbvGrd) + c(-2*se, 2*se)
+myConfInt
+```
+
+A 95% confidence interval for the __mean__ is (6.4327, 6.6029).
+
+But do we want instead the range that encompasses 95% of the data?  In other words, 2 standard deviations out from the sample mean?  In that case, we would calculate it like this:
+
+```{r}
+ninetyFive <- mean(train$TotRmsAbvGrd) + 
+  c(-2*sd(train$TotRmsAbvGrd), 2*sd(train$TotRmsAbvGrd))
+ninetyFive
+```
+
+Finally, what's my empirical 5th and 95th percentile on the actual data?  This would encompass 90% of my data.
+
+```{r}
+quantile(train$TotRmsAbvGrd,probs=c(0.05,0.95))
+```
+
+The investigations here show that an exponential model does not adequately capture the actual behavior of my data.  It's much more normal / gaussian than it is exponential!
+
+# Modeling
+
+_Build some type of regression  model and submit your model to the competition board.  Provide your complete model summary and results with analysis.  Report your Kaggle.com  user name and score._
+
+Oh, this is the fun part!!!  I like machine learning ensembling.  I'll find a few regression models that work reasonably well and then ensemble them (using a Tree or Random Forest algorithm).  Let's first use the PCA stuff and see how that works in a generalized linear model!
+
+First off, let's load some libraries we'll want.
+
+``` {r}
+library(lattice)
+library(ggplot2)
+library(caret)
+```
+
+We want to put the five PCA's we know are the most helpful next to the all of 
+of our training data -- that way we have a data frame that has all of our 
+variables, both given and computed.  We will, however, remove the "Id" field.
+
+```{r}
+pcaDataFrame <- cbind.data.frame(principalComponents$x[,1:5],
+                                 SalePrice=train$SalePrice)
+```
+
+Now let's set up a model. 
+``` {r}
+set.seed(42)
+model_1<-train(SalePrice ~ ., 
+                      data=pcaDataFrame, method="glm",
+                      trControl=trainControl())
+model_1
+```
+
+The R^2^ is a nice high 0.77, and the root mean squared error is not too shabby at around $39k.  Let's plot both the actual and predicted values and see if they form a nice line.  We will plot a line with slope 1 which would represent 100% accuracy.
+
+```{r}
+plot(pcaDataFrame$SalePrice, 
+     predict(model_1, pcaDataFrame),
+     xlab = "Actual Sale Price",
+             ylab = "Predicted Sale Price")
+abline(a=0, b=1)
+```
+
+Not terrible!  There are a couple of major outliers, and high value homes don't follow our predictions that well, but overall we did ok.
+
+What if, instead, we did a linear model on 15 principal components?
+
+```{r}
+pcaDataFrame2 <- cbind.data.frame(principalComponents$x[,1:15],
+                                  SalePrice=train$SalePrice)
+```
+
+Now let's set up a model. 
+
+``` {r}
+set.seed(42)
+model_2<-train(SalePrice ~ .,
+                      data=pcaDataFrame2, method="glm",
+                      trControl=trainControl())
+model_2
+```
+
+We didn't have any improvement.  We'll stick with the first one.  But let's do 
+some machine learning tweaks and add some repeated crossvalidation:
+
+```{r}
+set.seed(42)
+model_3<-train(SalePrice ~ ., 
+                      data=pcaDataFrame, method="glm",
+                     trControl = trainControl(method="repeatedcv", 
+                                              number=5, repeats = 25))
+model_3
+```
+
+OK, we squeaked out another percentage point of R^2^.  Not that impressive, but
+an improvement nonetheless.  We'll keep that repeated cross-validation in place
+for some of the other models, also.  Let's keep in mind, however, that this only 
+accounts for our numeric variables, not our factor variables (we kept 
+categorical and even a few numerical variables out of our PCA).  Could that be 
+why our model fails?
+
+Let's make dummy variables out of our factors so that our categories become numeric, and let's also impute missing values, so that the linear model will work.  Note that
+now that we're working with the original data, we go back to the "train" so 
+that we don't double-dip and overuse some variables (by modeling both on the 
+original variable and on its PCA distillation.)
+
+```{r}
+dummy <- dummyVars("~.", data=train)
+factorsDummied <- data.frame(predict(dummy, newdata = train))
+imputation <- preProcess(factorsDummied, method=("medianImpute"))
+imputedFactorsDummied <- predict(imputation,factorsDummied)
+set.seed(42)
+model_4<-train(SalePrice ~ ., 
+                      data=imputedFactorsDummied, method="glm",
+                      trControl = trainControl(method="repeatedcv", 
+                                              number=5, repeats = 25))
+model_4
+```
+
+Jeez, after all that work it's got a higher error and worse R^2^!  Still, let's
+look at the plot, out of curiosity.
+
+```{r}
+plot(imputedFactorsDummied$SalePrice, 
+     predict(model_4, imputedFactorsDummied),
+     xlab = "Actual Sale Price",
+             ylab = "Predicted Sale Price")
+abline(a=0, b=1)
+```
+
+Huh.  It actually looks better than our first one for a lot of the points, 
+especially for the high-end homes.  Let's hang on to it as a possible contributor
+to our ensemble. 
+
+In the meantime, what if we did a different algorithm, something like a stepwise 
+linear regression?  Let's try it!
+
+This one has lots of annoying output.  Sorry!
+
+```{r}
+set.seed(42)
+model_5<-train(SalePrice ~ ., 
+                      data=imputedFactorsDummied, method="leapSeq",
+                      trControl = trainControl(method="repeatedcv", 
+                                              number=5, repeats = 25))
+model_5
+```
+
+Ugh.  Not great. What if we tried, say, something that
+isn't exclusively linear?  Like the Generalized Additive Model with LOESS?
+
+```{r}
+set.seed(42)
+model_6<-train(SalePrice ~ ., 
+                      data=imputedFactorsDummied, method="gamLoess",
+                      trControl = trainControl(method="repeatedcv", 
+                                              number=5, repeats = 25))
+model_6
+```
+
+Meh.  Not great!  But let's throw a k nearest neighbors in there for fun to see 
+what happens!
+
+
+```{r}
+set.seed(42)
+model_7<-train(SalePrice ~ ., 
+                      data=imputedFactorsDummied, method="knn",
+                      trControl=trainControl())
+model_7
+```
+
+But what if we do a knn on the 5-PCA data frame, instead of the full data?
+
+```{r}
+set.seed(42)
+model_8<-train(SalePrice ~ ., 
+                      data=pcaDataFrame, method="knn",
+                     trControl = trainControl(method="repeatedcv", 
+                                              number=5, repeats = 25),
+               preProcess = c("center","scale","medianImpute"))
+model_8
+```
+
+WOW!  It really looks like doing models on the PCA is where it's at!  This is 
+our best by far so far.  Let's look!
+
+```{r}
+plot(pcaDataFrame$SalePrice, 
+     predict(model_8, pcaDataFrame),
+     xlab = "Actual Sale Price",
+             ylab = "Predicted Sale Price")
+abline(a=0, b=1)
+```
+
+It's a bit scattered.  But it really accounts for the data well.  It definitely
+belongs in our ensemble.
+
+Let's ensemble using k nearest neighbors:
+
+```{r}
+predictions <- data_frame(model_3 = predict(model_3, pcaDataFrame, 
+                                            na.action=na.pass),
+                          model_4 = predict(model_4, imputedFactorsDummied,
+                                            na.action=na.pass),
+                          model_8 = predict(model_8, pcaDataFrame,
+                                            na.action=na.pass),
+                          SalePrice = train$SalePrice)
+set.seed(42)
+ensemble<-train(SalePrice ~ ., 
+                      data=predictions, method="knn",
+                     trControl = trainControl(), 
+                preProcess = c("center","scale","medianImpute"))
+ensemble
+```
+
+That's pretty amazing: 92% of variance is explained!  I think we have a winner!
+
+Let's sum up what we've done to the training set so we can do the same thing
+to the test set. 
+
+* We applied PCA to the set, and used it to get a set of PC variables.  In our 
+training data we just used the $x part, but for the test data we'll need to use
+a predict setup.
+* We used dummying to handle data in the full model, and imputed empty data
+using medians.
+* Two models used the PCA data:  model 8 and model 3.
+* One model used the entire data set: model 4.
+* We ensembled them together using knn.
+
+Let's do that same thing to the test set:
+
+```{r}
+test <- read.csv("Downloads/test.csv")
+pcaTest<-predict(principalComponents,test)[,1:5]
+
+# Here we'll get into trouble if we don't add levels to the test set
+# that existed in the training set.  They'll be empty, but that's okay.
+levels(test$Utilities)<- c(levels(test$Utilities), "NoSeWa")
+levels(test$Condition2)<-c(levels(test$Condition2),   "RRAe",   "RRAn", "RRNn")
+levels(test$HouseStyle)<-c(levels(test$HouseStyle), "2.5Fin")
+levels(test$RoofMatl) <- c(levels(test$RoofMatl), "ClyTile", "Membran", "Metal","Roll")
+levels(test$Exterior1st) <- c(levels(test$Exterior1st), "ImStucc", "Stone")
+levels(test$Exterior2nd) <- c(levels(test$Exterior2nd), "Other")
+levels(test$Heating) <- c(levels(test$Heating), "Floor", "OthW")
+levels(test$Electrical) <- c(levels(test$Electrical), "Mix")
+levels(test$GarageQual) <- c(levels(test$GarageQual), "Ex")
+levels(test$PoolQC) <- c(levels(test$PoolQC), "Fa")
+levels(test$MiscFeature) <- c(levels(test$MiscFeature), "TenC")
+
+dummyTest <- dummyVars("~.", data=test, drop2nd = TRUE)
+factorsDummiedTest <- data.frame(predict(dummyTest, newdata = test))
+imputationTest <- preProcess(factorsDummiedTest, method=("medianImpute"))
+imputedFactorsDummiedTest <- predict(imputation,factorsDummiedTest)
+
+predictionsTest <- data_frame(model_3 = predict(model_3, pcaTest, 
+                                            na.action=na.pass),
+                          model_4 = predict(model_4, imputedFactorsDummiedTest,
+                                            na.action=na.pass),
+                          model_8 = predict(model_8, pcaTest,
+                                            na.action=na.pass))
+myPreds <- data.frame(Id = test$Id, SalePrice = predict(ensemble,predictionsTest, na.action=na.pass))
+write.csv(myPreds, "myPreds.csv", row.names = FALSE)
+```
+
+When I submitted my predictions to Kaggle (as JoyPayton), my score was 0.1474.
